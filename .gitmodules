@@ -1,0 +1,6 @@
+[submodule "GlassDB"]
+	path = GlassDB
+	url = https://github.com/ototoi/GlassDB.git
+[submodule "ColorSystem"]
+	path = ColorSystem
+	url = https://github.com/nikq/ColorSystem
