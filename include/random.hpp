@@ -6,6 +6,7 @@
 #ifndef __RANDOM_H
 #define __RANDOM_H
 
+#include <algorithm>
 #include <stdint.h>
 
 namespace RANDOM
@@ -61,7 +62,17 @@ class xoshiro256aa
     uint64_t s[4];
 
   public:
-    uint64_t next(void)
+    xoshiro256aa(uint64_t seed = 1)
+    {
+        s[0] = std::hash<uint64_t>()(seed);
+        s[1] = std::hash<uint64_t>()(seed + 1);
+        s[2] = std::hash<uint64_t>()(seed + 2);
+        s[3] = std::hash<uint64_t>()(seed + 3);
+    }
+
+    virtual ~xoshiro256aa() { ; }
+
+    inline uint64_t next(void)
     {
         const uint64_t result_starstar = rotl(s[1] * 5, 7) * 9;
 
@@ -74,6 +85,12 @@ class xoshiro256aa
         s[2] ^= t;
         s[3] = rotl(s[3], 45);
         return result_starstar;
+    }
+
+    inline double rand01()
+    {
+        uint64_t u = (next() >> 12) | (0x3FFull << 52);
+        return *(double *)&u - 1.f;
     }
 
     /* This is the jump function for the generator. It is equivalent to 2^128 calls to next(); it can be used to generate 2^128 non-overlapping subsequences for parallel computations. */
