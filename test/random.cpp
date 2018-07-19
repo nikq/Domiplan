@@ -1,6 +1,6 @@
 
-// "colorsystem"
-// copyright 2017 (c) Hajime UCHIMURA / @nikq
+// Domiplan test
+// copyright 2018 (c) Hajime UCHIMURA / @nikq
 // all rights reserved
 #include "common.hpp"
 
