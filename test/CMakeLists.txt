@@ -3,6 +3,7 @@ cmake_minimum_required (VERSION 3.8)
 set (HEADER_FILES common.hpp TestUtilities.hpp)
 
 set (SOURCE_FILES random.cpp
+                  lens.cpp
     )
 
 add_library (domiplan_test_objs OBJECT ${SOURCE_FILES} ${HEADER_FILES})

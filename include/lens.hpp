@@ -5,8 +5,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <vectormath.hpp>
+
 namespace LensSimulator
 { // レンズは沼です.
+
+typedef VECTORMATH::Vector3<double> Vector;
 
 void reflect(const Vector &I, const Vector &N, Vector &result)
 {
