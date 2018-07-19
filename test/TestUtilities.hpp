@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include <colorsystem.hpp>
+#include <vectormath.hpp>
 
 struct putFloat_
 {
@@ -35,6 +36,24 @@ inline std::ostream &operator<<(std::ostream &o, const putFloat_ &value)
 inline putFloat_ putFloat(float v)
 {
     return putFloat_{v};
+}
+
+inline putFloat_ putFloat(double v)
+{
+    return putFloat_{(float)v};
+}
+
+template <typename T>
+inline std::ostream &writeTo(std::ostream &o, const VECTORMATH::Vector3<T> &v)
+{
+    o << "(" << putFloat(v[0]) << " " << putFloat(v[1]) << " " << putFloat(v[2]) << ")";
+    return o;
+}
+
+template <typename T>
+inline std::ostream &operator<<(std::ostream &o, const VECTORMATH::Vector3<T> &v)
+{
+    return writeTo(o, v);
 }
 
 inline std::ostream &writeTo(std::ostream &o, const ColorSystem::Vector3 &v)
@@ -73,6 +92,18 @@ inline std::ostream &operator<<(std::ostream &o, const ColorSystem::Tristimulus 
 
 namespace Catch
 {
+/// VECTORMATH::Vector3
+template <typename T>
+struct StringMaker<VECTORMATH::Vector3<T>>
+{
+    static std::string convert(const VECTORMATH::Vector3<T> &v)
+    {
+        std::ostringstream O;
+        writeTo(O, v);
+        return O.str();
+    }
+};
+
 /// ColorSpace::Vector3 specialized string converter.
 template <>
 struct StringMaker<ColorSystem::Vector3>
@@ -146,6 +177,12 @@ class ApproxEquals final : public Catch::MatcherBase<T_>
         return O.str();
     }
 };
+
+template <typename T>
+inline ApproxEquals<VECTORMATH::Vector3<T>> IsApproxEquals(const VECTORMATH::Vector3<T> &m, double eps)
+{
+    return {m, eps};
+}
 
 inline ApproxEquals<ColorSystem::Matrix3> IsApproxEquals(const ColorSystem::Matrix3 &m, double eps)
 {

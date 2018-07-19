@@ -37,6 +37,8 @@ class Vector3
         z = self.z;
     }
 
+    const size_t size() const { return 3; }
+
     void dump(void);
 
     inline void set(T x_, T y_, T z_)
@@ -60,7 +62,7 @@ class Vector3
             break;
         }
     }
-    inline T get(int dim)
+    inline T get(int dim) const
     {
         switch (dim)
         {
@@ -83,6 +85,7 @@ class Vector3
     inline Vector3 operator/(T b) const { return Vector3(x / b, y / b, z / b); }
     inline Vector3 operator*(const Vector3 &b) const { return Vector3(x * b.x, y * b.y, z * b.z); }
     inline Vector3 operator/(const Vector3 &b) const { return Vector3(x * b.x, y * b.y, z * b.z); }
+    inline T       operator[](const int i) const { return get(i); }
     inline Vector3 mul(const Vector3 &b) const { return Vector3(x * b.x, y * b.y, z * b.z); }
     inline T       dot(const Vector3 &b) const { return x * b.x + y * b.y + z * b.z; }
     inline Vector3 operator%(Vector3 &b) const { return Vector3(y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x); }
