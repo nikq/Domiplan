@@ -7,7 +7,7 @@ set (SOURCE_FILES random.cpp
 
 add_library (domiplan_test_objs OBJECT ${SOURCE_FILES} ${HEADER_FILES})
 target_compile_features (domiplan_test_objs PUBLIC cxx_std_14)
-target_include_directories (domiplan_test_objs PUBLIC $<TARGET_PROPERTY:ColorSystem,INTERFACE_INCLUDE_DIRECTORIES>
+target_include_directories (domiplan_test_objs PUBLIC $<TARGET_PROPERTY:Domiplan,INTERFACE_INCLUDE_DIRECTORIES>
                                                   ${DOMIPLAN_SOURCE_DIR}/ext)
 set_target_properties (domiplan_test_objs PROPERTIES
                        COTIRE_PREFIX_HEADER_INIT common.hpp

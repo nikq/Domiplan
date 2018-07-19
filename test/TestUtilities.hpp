@@ -107,7 +107,7 @@ struct StringMaker<ColorSystem::Tristimulus>
         return O.str();
     }
 };
-}
+} // namespace Catch
 
 template <typename T_>
 class ApproxEquals final : public Catch::MatcherBase<T_>
