@@ -18,5 +18,6 @@ include_directories(ColorSystem/include)
 
 add_subdirectory (test)
 add_subdirectory (ColorSystem)
+add_subdirectory (lenstest)
 
 install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

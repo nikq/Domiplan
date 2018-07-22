@@ -18,3 +18,12 @@ TEST_CASE("lens", "")
         REQUIRE_THAT(out, IsApproxEquals(expected, eps));
     }
 }
+
+TEST_CASE("loader", "")
+{
+    SECTION("ZMX")
+    {
+        Lens::Body lens = Lens::Loader::ZEMAX::load("test1.zmx");
+        lens.dump();
+    }
+}
