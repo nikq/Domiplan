@@ -5,6 +5,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
+
+#include <vector>
 
 #include <vectormath.hpp>
 
@@ -29,34 +32,47 @@ bool refract(const Vector &I, Vector &N, double eta, Vector &result)
     return true;
 }
 
+// coat_thickness must be in nm.
+// lambda is in nm.
+double single_coat_reflectance(double lambda, double ior_in, double coat_ior, double coat_thickness, const Vector &dir, const Vector &norm)
+{
+    double cosTheta1     = dir.dot(norm);
+    double cosTheta2     = (ior_in / coat_ior) * sqrt((coat_ior * coat_ior) / (ior_in * ior_in) - (1. - cosTheta1 * cosTheta1));
+    double distance_diff = 2. * coat_thickness * (coat_ior / ior_in) * cosTheta2;
+    double m             = fmod(distance_diff, lambda) / lambda; // ズレ幅0-1,
+    return cos(m * M_PI);                                        // 0.5のとき0になるような値.
+}
+
 class Surface
 {
   public:
     typedef enum
     {
-        NONE,               // 空間.
-        APERTURE_HEXAGONAL, // 六角絞り
-        APERTURE_CIRCLE,    // 円絞り. xyアスペクトで楕円も.
-        STANDARD,           // 球面レンズ
-        EVENASPH,           // 偶数次非球面,
-        ODDASPH,            // 奇数次非球面
-        CYLINDER_X,         // シリンドリカルレンズX.
-        CYLINDER_Y,         // シリンドリカルレンズY. anamo.
-        CYLINDER_Z,         // シリンドリカルレンズZ.
+        NONE,       // 空間.
+        STANDARD,   // 球面レンズ
+        EVENASPH,   // 偶数次非球面,
+        CYLINDER_X, // シリンドリカルレンズX.
+        CYLINDER_Y, // シリンドリカルレンズY. anamo.
+        CYLINDER_Z, // シリンドリカルレンズZ.
     } TYPE;
 
+    static constexpr int N_Aspherical = 8;
+
     TYPE   type_;
-    double center_;
-    double radius_;
-    double diameter_;
-    double thickness_; // 次の面までの距離.
-    double irisX_;
-    double irisY_; // 円絞り楕円率.
-    double ior_;
-    double abbeVd_;
-    double reflection_; // 反射率.
+    double center_;                   // 球の中心
+    double radius_;                   // 球の半径
+    double diameter_;                 // レンズ半径
+    double thickness_;                // 次の面までの距離.
+    double irisX_;                    //絞りサイズ
+    double irisY_;                    // 円絞り楕円率.
+    double ior_;                      // 媒体屈折率
+    double abbeVd_;                   // d線あっべすう
+    double reflection_;               // 反射率.
+    double conic_;                    // コーニック係数
+    double aspherical_[N_Aspherical]; // 非球面パラメータ
 
     bool   isCoated_;
+    bool   isStop_;
     double coatThickness_; // 275nm = 550nmの半波長.
     double coatIor_;       // MgF2で1.38
     double roughness_;
@@ -93,21 +109,11 @@ class Surface
         return ret;
     }
 
-    // coat_thickness must be in nm.
-    // lambda is in nm.
-    double single_coat_reflect(double lambda, double ior_in, double coat_ior, double coat_thickness, const Vector &dir, const Vector &norm)
-    {
-        double cosTheta1     = dir.dot(norm);
-        double cosTheta2     = (ior_in / coat_ior) * sqrt((coat_ior * coat_ior) / (ior_in * ior_in) - (1. - cosTheta1 * cosTheta1));
-        double distance_diff = 2. * coat_thickness * (coat_ior / ior_in) * cosTheta2;
-        double m             = fmod(distance_diff, lambda) / lambda; // ズレ幅0-1,
-        return cos(m * M_PI);                                        // 0.5のとき0になるような値.
-    }
-
     double reflection(double lambda, double ior_now, double ior_next, const Vector &dir, const Vector &norm, double &Re, double &Tr)
     {
         if (isCoated_) // シングルコート.
-            return single_coat_reflect(lambda, ior_now, coatIor_, coatThickness_, dir, norm);
+            return single_coat_reflectance(lambda, ior_now, coatIor_, coatThickness_, dir, norm);
+
         // コーティング無し
         double a  = ior_now - ior_next;
         double b  = ior_now + ior_next;
@@ -119,6 +125,11 @@ class Surface
         double nnt2 = (ior_now / ior_next) * (ior_now / ior_next);
         Tr          = (1. - Re) * nnt2; // 屈折からの寄与.
         return Re;
+    }
+
+    double sag(double x, double y, double *dx, double *dy, double *dz)
+    {
+        return 0.0f;
     }
 };
 
@@ -173,35 +184,21 @@ class Body
                 surfaces_[i].roughness_,
                 surfaces_[i].reflection_,
                 surfaces_[i].irisX_, surfaces_[i].irisY_);
+            if (surfaces_[i].type_ == Surface::EVENASPH)
+            {
+                printf(" coni %f, ", surfaces_[i].conic_);
+                for (int t = 0; t < Surface::N_Aspherical; t++)
+                {
+                    printf(" %e ", surfaces_[i].aspherical_[t]);
+                }
+                printf("\n");
+            }
         }
     }
 };
 
-namespace LOADER
+namespace Loader
 {
-    namespace LENS
-    {
-        char *tokenize(char *s, char *token)
-        {
-            char *p = (char *)s;
-            while (*p && (*p == ' ' || *p == '\t'))
-                p++;
-            if (*p == 0)
-                return NULL;
-            while (*p != ' ' && *p != '\t' && *p != '\r' && *p != '\n' && *p)
-            {
-                //printf("%c\n",*p);
-                *token = *p;
-                token++;
-                p++;
-            }
-            *token = 0;
-            if (*p == '\r' || *p == '\n' || *p == 0)
-                return NULL;
-            return p;
-        }
-    } // namespace LENS
-
     namespace ZEMAX
     {
         char *tokenize(char *s, char *token)
@@ -231,7 +228,10 @@ namespace LOADER
 
             fopen_s(&fp, filename, "rb");
             if (!fp)
+            {
+                printf("lens %s open fail\n", filename);
                 return lens;
+            }
 
             int     surfaceIndex = -1;
             Surface surface;
@@ -252,9 +252,9 @@ namespace LOADER
                     {
                         if (surface.diameter_ > 0.)
                         {
-                            surface.center_ = surface.center_ + surface.radius_;                         // 中心位置を調整しておく.
-                            surface.type_   = isAperture ? Surface::APERTURE_CIRCLE : Surface::STANDARD; // STOPは絞り.
-                            lens.surfaces_.push_back(surface);                                           // レンズフラッシュ
+                            surface.center_ = surface.center_ + surface.radius_; // 中心位置を調整しておく.
+                            surface.isStop_ = isAperture;
+                            lens.surfaces_.push_back(surface); // レンズフラッシュ
                         }
                     }
                     p            = tokenize(p, token);
@@ -268,6 +268,8 @@ namespace LOADER
                     p = tokenize(p, token);
                     if (strcmp(token, "STANDARD") == 0)
                         surface.type_ = Surface::STANDARD;
+                    else if (strcmp(token, "EVENASPH") == 0)
+                        surface.type_ = Surface::EVENASPH;
                     else
                     {
                         printf("unknown surface: %s\n", token);
@@ -302,6 +304,26 @@ namespace LOADER
                     surface.diameter_ = atof(token);
                 }
 
+                if (strcmp(token, "PARM") == 0)
+                {
+                    // evenasph param.
+                    p            = tokenize(p, token);
+                    int index    = atoi(token);
+                    p            = tokenize(p, token);
+                    double value = strtod(token, NULL); //atof(token);
+                    assert(index >= 1 && index <= 8);
+                    assert(surface.type_ == Surface::EVENASPH);
+                    surface.aspherical_[index - 1] = value;
+                }
+                if (strcmp(token, "CONI") == 0)
+                {
+                    // evenasph conic
+                    p            = tokenize(p, token);
+                    double value = atoi(token);
+                    assert(surface.type_ == Surface::EVENASPH);
+                    surface.conic_ = value;
+                }
+
                 if (strcmp(token, "GLAS") == 0)
                 {
                     p = tokenize(p, token); // name
@@ -323,6 +345,6 @@ namespace LOADER
         }
 
     } // namespace ZEMAX
-} // namespace LOADER
+} // namespace Loader
 
 } // namespace Lens
