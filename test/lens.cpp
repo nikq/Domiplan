@@ -1,3 +1,5 @@
+// copyright(c) 2018 Hajime UCHIMURA / nikq
+
 #include "common.hpp"
 
 #include "TestUtilities.hpp"
@@ -5,6 +7,8 @@
 #include <lens.hpp>
 
 #include <math.h>
+
+#include <floatcanvas.hpp>
 
 TEST_CASE("lens", "")
 {

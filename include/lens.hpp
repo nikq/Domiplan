@@ -1,8 +1,9 @@
 ﻿
 #define _USE_MATH_DEFINES
+#include <math.h>
+#undef _USE_MATH_DEFINES
 
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
@@ -61,7 +62,9 @@ class Surface
     TYPE   type_;
     double center_;                   // 球の中心
     double radius_;                   // 球の半径
+    double radius2_;                  // 球の半径^2
     double diameter_;                 // レンズ半径
+    double diam2_;                    // レンズ半径^2
     double thickness_;                // 次の面までの距離.
     double irisX_;                    //絞りサイズ
     double irisY_;                    // 円絞り楕円率.
@@ -87,7 +90,9 @@ class Surface
         type_       = NONE;
         center_     = 0.;
         radius_     = 0.;
+        radius2_    = 0.;
         diameter_   = 0.;
+        diam2_      = 0.;
         irisX_      = 1.;
         irisY_      = 1.;
         thickness_  = 0.;
@@ -127,8 +132,27 @@ class Surface
         return Re;
     }
 
-    double sag(double x, double y, double *dx, double *dy, double *dz)
+    double sag(double x, double y, Vector &norm)
     {
+        double r2 = x * x + y * y;
+        switch (type_)
+        {
+        case STANDARD:
+        {
+            if (r2 > diam2_)
+                return 0.f;
+
+            return radius_ * sqrt(1. - r2 / radius2_);
+        }
+        /*NOTREACHED*/
+        break;
+        case EVENASPH:
+        {
+            if (r2 > diam2_)
+                return 0.f;
+        }
+        break;
+        }
         return 0.0f;
     }
 };
@@ -283,7 +307,10 @@ namespace Loader
                     p            = tokenize(p, token);
                     double curve = atof(token);
                     if (curve != 0.)
-                        surface.radius_ = 1. / curve;
+                    {
+                        surface.radius_  = 1. / curve;
+                        surface.radius2_ = surface.radius_ * surface.radius_;
+                    }
                     else
                         surface.radius_ = 0.;
                 }
@@ -301,7 +328,9 @@ namespace Loader
                 if (strcmp(token, "DIAM") == 0)
                 {
                     p                 = tokenize(p, token);
-                    surface.diameter_ = atof(token);
+                    double d          = strtod(token, NULL);
+                    surface.diameter_ = d;
+                    surface.diam2_    = d * d;
                 }
 
                 if (strcmp(token, "PARM") == 0)
