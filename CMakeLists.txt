@@ -15,6 +15,7 @@ target_include_directories (Domiplan INTERFACE
 enable_testing ()
 
 include_directories(ColorSystem/include)
+include_directories(stb)
 
 add_subdirectory (test)
 add_subdirectory (ColorSystem)
