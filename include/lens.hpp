@@ -1,4 +1,5 @@
-﻿
+﻿// copyright(c) 2018 Hajime UCHIMURA / nikq
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 #undef _USE_MATH_DEFINES
@@ -10,6 +11,7 @@
 
 #include <vector>
 
+#include <floatcanvas.hpp>
 #include <vectormath.hpp>
 
 namespace Lens
@@ -132,7 +134,7 @@ class Surface
         return Re;
     }
 
-    double sag(double x, double y, Vector &norm)
+    const double sag(double x, double y, Vector &norm) const
     {
         double r2 = x * x + y * y;
         switch (type_)
@@ -375,5 +377,37 @@ namespace Loader
 
     } // namespace ZEMAX
 } // namespace Loader
+
+class Plotter
+{
+  public:
+    FloatCanvas::Canvas canvas_;
+
+    void draw(const Body &body)
+    {
+        const float scale         = 16.f;
+        const float imageSurfaceZ = (float)body.imageSurfaceZ_;
+
+        int width  = (int)(imageSurfaceZ * scale);
+        int height = (int)(width / 2.f);
+
+        canvas_.setup(width, height);
+        canvas_.fill(FloatCanvas::Pixel(0, 0, 0));
+
+        auto canvasX = [scale, width](float f) { return f * scale + (width / 2.f); };
+        auto canvasY = [scale, height](float f) { return f * scale + (height / 2.f); };
+        auto lensY   = [scale, height](int y) { return (y - height / 2) / scale; };
+
+        for (const auto &surface : body.surfaces_)
+        {
+            Vector norm;
+            for (int y = 0; y < height; y++)
+            {
+                const float sag = (const float)surface.sag(0., lensY(y), norm);
+                canvas_.putPixel(canvasX(sag - (float)surface.center_), (float)y, FloatCanvas::Pixel(1, 1, 1));
+            }
+        }
+    }
+};
 
 } // namespace Lens
