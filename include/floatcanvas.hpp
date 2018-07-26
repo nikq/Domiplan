@@ -1,5 +1,6 @@
 ﻿// copyright(c) 2018 Hajime UCHIMURA / nikq
-
+#ifndef __FLOATCANVAS_H
+#define __FLOATCANVAS_H
 #include <colorsystem.hpp>
 
 #include <vector>
@@ -90,7 +91,7 @@ class Canvas
     }
     void inline setPixel(int x, int y, const Pixel &p, float a = 1.f)
     {
-        if (x >= 0 && y >= 0 && x < width_ && y <= height_)
+        if (x >= 0 && y >= 0 && x < width_ && y < height_)
             setDot(x, y, p, a);
     }
     void inline putPixel(const float x, const float y, const Pixel &p, float a = 1.f)
@@ -226,3 +227,4 @@ class Canvas
     }
 };
 } // namespace FloatCanvas
+#endif
