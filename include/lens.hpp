@@ -63,6 +63,8 @@ class Surface
 
     TYPE   type_;
     double center_;                   // 球の中心
+    double curve_;                    // 曲率
+    double curve2_;                   // 曲率^2
     double radius_;                   // 球の半径
     double radius2_;                  // 球の半径^2
     double diameter_;                 // レンズ半径
@@ -105,6 +107,13 @@ class Surface
         isCoated_   = false;
     }
 
+    void setup()
+    {
+        radius2_ = radius_ * radius_;
+        diam2_   = diameter_ * diameter_;
+        curve2_  = curve_ * curve_;
+    }
+
     double ior(double lambda) const
     {
         // コーシーの式.
@@ -144,7 +153,7 @@ class Surface
             if (r2 > diam2_)
                 return 0.f;
 
-            return radius_ * sqrt(1. - r2 / radius2_);
+            return (curve_ * r2) / (1. + sqrt(1. - curve2_ * r2));
         }
         /*NOTREACHED*/
         break;
@@ -152,7 +161,18 @@ class Surface
         {
             if (r2 > diam2_)
                 return 0.f;
+
+            //https://forum.zemax.com/12954/Zemax
+            double rr2 = r2;
+            double z   = (curve_ * r2) / (1. + sqrt(1. - (conic_ + 1.) * curve2_ * r2));
+            for (int i = 0; i < N_Aspherical; i++)
+            {
+                z += aspherical_[i] * rr2;
+                rr2 *= r2;
+            }
+            return z;
         }
+        /*NOTREACHED*/
         break;
         }
         return 0.0f;
@@ -168,6 +188,7 @@ class Body
     double     imageSurfaceZ_;
     double     imageSurfaceR_; // 像面高さ.
     double     irisScale_;
+    double     maxDiameter_; //最大レンズ半径
 
     Body()
     {
@@ -175,28 +196,24 @@ class Body
         imageSurfaceZ_ = 100.;
         imageSurfaceR_ = 100.;
         irisScale_     = 1.;
+        maxDiameter_   = 0.f;
     }
 
-    double getImageSurfaceR(void)
+    void setup(void)
     {
-        return imageSurfaceR_;
+        for (auto &surf : surfaces_)
+        {
+            surf.setup();
+            maxDiameter_ = std::max(maxDiameter_, surf.diameter_);
+        }
     }
-    void setImageSurfaceR(double r)
-    {
-        imageSurfaceR_ = r;
-    }
-    double getImageSurfaceZ(void)
-    {
-        return imageSurfaceZ_;
-    }
-    void setImageSurfaceZ(double z)
-    {
-        imageSurfaceZ_ = z;
-    }
-    void setIrisScale(double i)
-    {
-        irisScale_ = i;
-    }
+
+    double maxDiameter() const { return maxDiameter_; }
+    double getImageSurfaceR(void) const { return imageSurfaceR_; }
+    void   setImageSurfaceR(double r) { imageSurfaceR_ = r; }
+    double getImageSurfaceZ(void) const { return imageSurfaceZ_; }
+    void   setImageSurfaceZ(double z) { imageSurfaceZ_ = z; }
+    void   setIrisScale(double i) { irisScale_ = i; }
 
     void dump(void)
     {
@@ -306,13 +323,11 @@ namespace Loader
 
                 if (strcmp(token, "CURV") == 0)
                 {
-                    p            = tokenize(p, token);
-                    double curve = atof(token);
+                    p              = tokenize(p, token);
+                    double curve   = atof(token);
+                    surface.curve_ = curve;
                     if (curve != 0.)
-                    {
-                        surface.radius_  = 1. / curve;
-                        surface.radius2_ = surface.radius_ * surface.radius_;
-                    }
+                        surface.radius_ = 1. / curve;
                     else
                         surface.radius_ = 0.;
                 }
@@ -332,7 +347,6 @@ namespace Loader
                     p                 = tokenize(p, token);
                     double d          = strtod(token, NULL);
                     surface.diameter_ = d;
-                    surface.diam2_    = d * d;
                 }
 
                 if (strcmp(token, "PARM") == 0)
@@ -372,6 +386,7 @@ namespace Loader
             // lens.surfaces_.push_back( surface ); // レンズフラッシュ
             lens.imageSurfaceZ_ = surface.center_;
             fclose(fp);
+            lens.setup();
             return lens;
         }
 
@@ -388,23 +403,43 @@ class Plotter
         const float scale         = 16.f;
         const float imageSurfaceZ = (float)body.imageSurfaceZ_;
 
-        int width  = (int)(imageSurfaceZ * scale);
-        int height = (int)(width / 2.f);
+        int width  = (int)(imageSurfaceZ * 2.f * scale);
+        int height = (int)(body.maxDiameter() * scale * 2.f);
 
         canvas_.setup(width, height);
         canvas_.fill(FloatCanvas::Pixel(0, 0, 0));
 
-        auto canvasX = [scale, width](float f) { return f * scale + (width / 2.f); };
-        auto canvasY = [scale, height](float f) { return f * scale + (height / 2.f); };
-        auto lensY   = [scale, height](int y) { return (y - height / 2) / scale; };
+        const auto lensX = [scale, width](float x) { return (float)(x - width / 2) / scale; };
+        const auto lensY = [scale, height](float y) { return (float)(y - height / 2) / scale; };
+
+        const auto canvasX = [scale, width](float x) { return (float)(x * scale + width / 2); };
+        const auto canvasY = [scale, height](float y) { return (float)(y * scale + height / 2); };
+
+        assert(lensX(canvasX(0.f)) == 0.f);
+        assert(lensY(canvasY(0.f)) == 0.f);
+        assert(canvasX(lensX(0.f)) == 0.f);
+        assert(canvasY(lensY(0.f)) == 0.f);
+
+        assert(lensX(canvasX(1.f)) == 1.f);
+        assert(lensY(canvasY(1.f)) == 1.f);
+        assert(canvasX(lensX(1.f)) == 1.f);
+        assert(canvasY(lensY(1.f)) == 1.f);
 
         for (const auto &surface : body.surfaces_)
         {
             Vector norm;
-            for (int y = 0; y < height; y++)
+
+            int dia = (int)(surface.diameter_ * scale);
+
+            for (int y = height / 2 - dia; y < height / 2 + dia; y++)
             {
-                const float sag = (const float)surface.sag(0., lensY(y), norm);
-                canvas_.putPixel(canvasX(sag - (float)surface.center_), (float)y, FloatCanvas::Pixel(1, 1, 1));
+                Vector normal;
+                double sag = surface.sag(0.f, lensY((float)y), normal);
+
+                canvas_.putPixel(
+                    canvasX((float)(surface.center_ - surface.radius_ + sag)),
+                    (float)y,
+                    FloatCanvas::Pixel(1, 1, 1));
             }
         }
     }
