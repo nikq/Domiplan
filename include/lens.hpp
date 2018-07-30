@@ -105,6 +105,7 @@ class Surface
         abbeVd_     = 1.; // at D light.
         reflection_ = 0.1;
         isCoated_   = false;
+        conic_      = 0.;
     }
 
     void setup()
@@ -145,7 +146,9 @@ class Surface
 
     const double sag(double x, double y, Vector &norm) const
     {
-        double r2 = x * x + y * y;
+        const double     r2  = x * x + y * y;
+        const double     r   = sqrt(r2);
+        constexpr double eps = 1e-6;
         switch (type_)
         {
         case STANDARD:
@@ -153,7 +156,12 @@ class Surface
             if (r2 > diam2_)
                 return 0.f;
 
-            return (curve_ * r2) / (1. + sqrt(1. - curve2_ * r2));
+            const double z  = (curve_ * r2) / (1. + sqrt(1. - curve2_ * r2));
+            const double n  = curve_ * r / sqrt(1. - curve2_ * (1. + conic_) * r2);
+            const double nx = (r < eps) ? 0. : (n * x / r);
+            const double ny = (r < eps) ? 0. : (n * y / r);
+            norm            = Vector(nx, ny, -1.).normal();
+            return z;
         }
         /*NOTREACHED*/
         break;
@@ -163,13 +171,20 @@ class Surface
                 return 0.f;
 
             //https://forum.zemax.com/12954/Zemax
+            //https://www.desmos.com/calculator/wftkimsvv4 :: normal
+            double rr  = r;
             double rr2 = r2;
             double z   = (curve_ * r2) / (1. + sqrt(1. - (conic_ + 1.) * curve2_ * r2));
+            double n   = curve_ * r / sqrt(1. - curve2_ * (1. + conic_) * r2);
             for (int i = 0; i < N_Aspherical; i++)
             {
                 z += aspherical_[i] * rr2;
+                n += 2. * (i + 1.) * aspherical_[i] * rr;
                 rr2 *= r2;
             }
+            const double nx = (r < eps) ? 0. : (n * x / r);
+            const double ny = (r < eps) ? 0. : (n * y / r);
+            norm            = Vector(nx, ny, -1.).normal();
             return z;
         }
         /*NOTREACHED*/
@@ -281,6 +296,7 @@ namespace Loader
 
             bool   isAperture = false;
             double sumz       = 0.;
+
             while (!feof(fp))
             {
                 char line[1024], *p, token[256];
@@ -357,7 +373,7 @@ namespace Loader
                     p            = tokenize(p, token);
                     double value = strtod(token, NULL); //atof(token);
                     assert(index >= 1 && index <= 8);
-                    assert(surface.type_ == Surface::EVENASPH);
+                    //assert(surface.type_ == Surface::EVENASPH);
                     surface.aspherical_[index - 1] = value;
                 }
                 if (strcmp(token, "CONI") == 0)
@@ -365,7 +381,7 @@ namespace Loader
                     // evenasph conic
                     p            = tokenize(p, token);
                     double value = atoi(token);
-                    assert(surface.type_ == Surface::EVENASPH);
+                    //assert(surface.type_ == Surface::EVENASPH);
                     surface.conic_ = value;
                 }
 
@@ -400,11 +416,12 @@ class Plotter
 
     void draw(const Body &body)
     {
-        const float scale         = 16.f;
+        //const float scale         = 16.f;
         const float imageSurfaceZ = (float)body.imageSurfaceZ_;
 
-        int width  = (int)(imageSurfaceZ * 2.f * scale);
-        int height = (int)(body.maxDiameter() * scale * 2.f);
+        const int   width  = 2048; //(int)(imageSurfaceZ * 2.f * scale);
+        const float scale  = (float)width / (imageSurfaceZ * 2.f);
+        const int   height = (int)(body.maxDiameter() * scale * 2.f) + 256;
 
         canvas_.setup(width, height);
         canvas_.fill(FloatCanvas::Pixel(0, 0, 0));
