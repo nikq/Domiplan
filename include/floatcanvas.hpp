@@ -60,7 +60,7 @@ class Canvas
         std::vector<uint8_t> rgb(width() * height() * 3);
         for (int i = 0; i < width_ * height_; i++)
         {
-            const Pixel sdr = ColorSystem::OTF::toScreen(otf, pixel_[i].apply(mat).scale(100.f).clip(0.f, 100.f));
+            const Pixel sdr = ColorSystem::OTF::toScreen(otf, pixel_[i].apply(mat).clip(0.f, 1.f));
             rgb[i * 3 + 0]  = (uint8_t)(sdr[0] * 255);
             rgb[i * 3 + 1]  = (uint8_t)(sdr[1] * 255);
             rgb[i * 3 + 2]  = (uint8_t)(sdr[2] * 255);
@@ -100,10 +100,10 @@ class Canvas
         float xr = x - floor(x);
         int   yl = (int)floor(y);
         float yr = y - floor(y);
-        setPixel(xl + 0, yl + 0, p * (1.f - xr) * (1.f - yr), a);
-        setPixel(xl + 1, yl + 0, p * xr * (1.f - yr), a);
-        setPixel(xl + 0, yl + 1, p * (1.f - xr) * yr, a);
-        setPixel(xl + 1, yl + 1, p * xr * yr, a);
+        setPixel(xl + 0, yl + 0, p, a * (1.f - xr) * (1.f - yr));
+        setPixel(xl + 1, yl + 0, p, a * xr * (1.f - yr));
+        setPixel(xl + 0, yl + 1, p, a * (1.f - xr) * yr);
+        setPixel(xl + 1, yl + 1, p, a * xr * yr);
     }
 
     static inline float distanceFromLine(
@@ -128,6 +128,7 @@ class Canvas
     void drawLine(float x1, float y1, float x2, float y2,
         const Pixel &color, float s, float g = 1.0, float a2 = 1.0)
     {
+        //printf("%f,%f - %f,%f\n", x1, y1, x2, y2);
         const float a = y2 - y1;
         const float b = x1 - x2;
         const float c = x2 * y1 - x1 * y2;
@@ -163,7 +164,8 @@ class Canvas
 
                 const size_t k = (ix + iy * width_) * 3;
 
-                pixel_[k] = pixel_[k] * (1.0f - alpha) + color * alpha;
+                //pixel_[k] = pixel_[k] * (1.0f - alpha) + color * alpha;
+                setDot(ix, iy, color, alpha);
             }
         }
     }

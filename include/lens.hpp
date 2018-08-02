@@ -144,53 +144,108 @@ class Surface
         return Re;
     }
 
+    // norm : d/dx, d/dy, d/dz
     const double sag(double x, double y, Vector &norm) const
     {
-        const double     r2  = x * x + y * y;
+        const double r2 = x * x + y * y;
+        if (r2 > diam2_)
+            return 0.f;
+
+        //https://forum.zemax.com/12954/Zemax
+        //https://www.desmos.com/calculator/wftkimsvv4 :: normal
+
         const double     r   = sqrt(r2);
         constexpr double eps = 1e-6;
-        switch (type_)
-        {
-        case STANDARD:
-        {
-            if (r2 > diam2_)
-                return 0.f;
 
-            const double z  = (curve_ * r2) / (1. + sqrt(1. - curve2_ * r2));
-            const double n  = curve_ * r / sqrt(1. - curve2_ * (1. + conic_) * r2);
-            const double nx = (r < eps) ? 0. : (n * x / r);
-            const double ny = (r < eps) ? 0. : (n * y / r);
-            norm            = Vector(nx, ny, -1.).normal();
-            return z;
-        }
-        /*NOTREACHED*/
-        break;
-        case EVENASPH:
+        double rr  = r;
+        double rr2 = r2;
+        double z   = (curve_ * r2) / (1. + sqrt(1. - (conic_ + 1.) * curve2_ * r2));
+        double n   = curve_ * r / sqrt(1. - curve2_ * (1. + conic_) * r2);
+        if (type_ == EVENASPH)
         {
-            if (r2 > diam2_)
-                return 0.f;
-
-            //https://forum.zemax.com/12954/Zemax
-            //https://www.desmos.com/calculator/wftkimsvv4 :: normal
-            double rr  = r;
-            double rr2 = r2;
-            double z   = (curve_ * r2) / (1. + sqrt(1. - (conic_ + 1.) * curve2_ * r2));
-            double n   = curve_ * r / sqrt(1. - curve2_ * (1. + conic_) * r2);
+            //非球面のときだけ高次もevalする.
             for (int i = 0; i < N_Aspherical; i++)
             {
                 z += aspherical_[i] * rr2;
                 n += 2. * (i + 1.) * aspherical_[i] * rr;
                 rr2 *= r2;
             }
-            const double nx = (r < eps) ? 0. : (n * x / r);
-            const double ny = (r < eps) ? 0. : (n * y / r);
-            norm            = Vector(nx, ny, -1.).normal();
-            return z;
         }
-        /*NOTREACHED*/
-        break;
+        const double nx = (r < eps) ? 0. : (n * x / r);
+        const double ny = (r < eps) ? 0. : (n * y / r);
+
+        norm = Vector(nx, ny, -1.).normal();
+        return z;
+    }
+
+    const double sag(const Vector &v, Vector &norm) const
+    {
+        return sag(v.x, v.y, norm);
+    }
+
+    // 原点はレンズの中心. x=y=sag=0
+    const bool intersect(const Vector &orig, const Vector &dir, double &t, Vector &point, Vector &norm) const
+    {
+        constexpr double eps = 1e-6;
+
+        // solve equation:
+        // orig.z + dir.z * dist == sag( orig.x + dir.x * dist, orig.y + dir.y * dist) for dist.
+        double t0   = 0.;
+        double t1   = radius_;
+        int    iter = 256;
+
+        // initial range
+        Vector n0, n1;
+        double z0 = sag(orig + dir * t0, n0) - (orig.z + dir.z * t0);
+        double z1 = sag(orig + dir * t1, n1) - (orig.z + dir.z * t1);
+        bool   s0 = signbit(z0);
+        bool   s1 = signbit(z1);
+
+        if (fabs(z0) < eps)
+        {
+            // converged.
+            t     = t0;
+            point = Vector(orig.x + dir.x * t, orig.y + dir.y * t, center_ - radius_ + sag(orig + dir * t, norm));
+            return true;
         }
-        return 0.0f;
+
+        if (s0 == s1)
+        {
+            // 範囲内に解を持たない.
+            return false;
+        }
+
+        while (iter-- > 0)
+        {
+            double tm = (t0 + t1) / 2.;
+
+            Vector       nm;
+            const double zm = sag(orig + dir * tm, nm) - (orig.z + dir.z * tm);
+
+            if (fabs(t1 - t0) < eps)
+            {
+                // converged.
+                t     = tm;
+                point = Vector(orig.x + dir.x * tm, orig.y + dir.y * tm, center_ - radius_ + sag(orig + dir * tm, norm));
+                return true;
+            }
+
+            const bool sm = signbit(zm);
+            if (sm == s0)
+            {
+                t0 = tm;
+                s0 = sm;
+                z0 = zm;
+            }
+            else
+            {
+                t1 = tm;
+                s1 = sm;
+                z1 = zm;
+            }
+        }
+        // not converged.
+        return false;
     }
 };
 
@@ -432,15 +487,15 @@ class Plotter
         const auto canvasX = [scale, width](float x) { return (float)(x * scale + width / 2); };
         const auto canvasY = [scale, height](float y) { return (float)(y * scale + height / 2); };
 
-        assert(lensX(canvasX(0.f)) == 0.f);
-        assert(lensY(canvasY(0.f)) == 0.f);
-        assert(canvasX(lensX(0.f)) == 0.f);
-        assert(canvasY(lensY(0.f)) == 0.f);
-
-        assert(lensX(canvasX(1.f)) == 1.f);
-        assert(lensY(canvasY(1.f)) == 1.f);
-        assert(canvasX(lensX(1.f)) == 1.f);
-        assert(canvasY(lensY(1.f)) == 1.f);
+        /*constexpr float EPS = 1e-4f;
+        assert(fabs(lensX(canvasX(0.f)) - 0.f) < EPS);
+        assert(fabs(lensY(canvasY(0.f)) - 0.f) < EPS);
+        assert(fabs(canvasX(lensX(0.f)) - 0.f) < EPS);
+        assert(fabs(canvasY(lensY(0.f)) - 0.f) < EPS);
+        assert(fabs(lensX(canvasX(1.f)) - 1.f) < EPS);
+        assert(fabs(lensY(canvasY(1.f)) - 1.f) < EPS);
+        assert(fabs(canvasX(lensX(1.f)) - 1.f) < EPS);
+        assert(fabs(canvasY(lensY(1.f)) - 1.f) < EPS);*/
 
         for (const auto &surface : body.surfaces_)
         {
@@ -457,6 +512,35 @@ class Plotter
                     canvasX((float)(surface.center_ - surface.radius_ + sag)),
                     (float)y,
                     FloatCanvas::Pixel(1, 1, 1));
+            }
+        }
+
+        for (float y = 0.f; y < body.maxDiameter(); y += 1.f)
+        {
+            const float cy = canvasY(y); //plotting y
+            canvas_.drawLine(
+                canvasX(0.f), canvasY(y),
+                canvasX(imageSurfaceZ), canvasY(y),
+                FloatCanvas::Pixel(0.1f, 0.1f, 0.1f), 1);
+
+            for (const auto &surface : body.surfaces_)
+            {
+                Vector orig = Vector(0.f, y, 0.f);
+                Vector dir  = Vector(0.f, 0.f, 1.f);
+                {
+                    Vector norm, point;
+                    double t;
+                    bool   hit = surface.intersect(orig, dir, t, point, norm);
+                    if (hit)
+                    {
+                        canvas_.drawLine(
+                            canvasX((float)point.z),
+                            canvasY((float)point.y),
+                            canvasX((float)(point.z + norm.z)),
+                            canvasY((float)(point.y + norm.y)),
+                            FloatCanvas::Pixel(1.0f, 0.0f, 0.0f), 1);
+                    }
+                }
             }
         }
     }
